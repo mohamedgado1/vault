@@ -1,0 +1,94 @@
+# installing vault server in openshift 4.16 
+step 1:
+helm repo add hashicorp https://helm.releases.hashicorp.com
+
+helm search repo hashicorp/vault
+override-values.yaml
+global:
+  openshift: true
+
+ui:
+  enabled: true
+
+injector:
+  enabled: true
+  image:
+    repository: "registry.connect.redhat.com/hashicorp/vault-k8s"
+    tag: "1.6.2-ubi"
+  agentImage:
+    repository: "registry.connect.redhat.com/hashicorp/vault"
+    tag: "1.19.0-ubi"
+
+server:
+  image:
+    repository: "registry.connect.redhat.com/hashicorp/vault"
+    tag: "1.19.0-ubi"
+  dataStorage:
+    enabled: true
+    storageClass: ocs-storagecluster-cephfs
+  route:
+    enabled: true
+    host: vault-server.apps.67ff023f589a8c961ff5c8b9.ap1.techzone.ibm.com
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+
+
+##########################################
+oc new-project vault
+helm install vault-server hashicorp/vault -f override-values.yaml
+vim route-vault-console.yaml
+[itzuser@localhost ~]$ cat route-vault-console.yaml
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: vault-console
+  namespace: vault
+  labels:
+    app.kubernetes.io/instance: vault-server
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: vault-ui
+    app.kubernetes.io/part-of: vault-server
+    helm.sh/chart: vault-0.30.0
+  annotations:
+    openshift.io/host.generated: 'true'
+spec:
+  host: vault-console-vault.apps.67ff023f589a8c961ff5c8b9.ap1.techzone.ibm.com
+  to:
+    kind: Service
+    name: vault-server-ui
+    weight: 100
+  port:
+    targetPort: 8200
+  tls:
+    termination: edge
+  wildcardPolicy: None
+
+
+###########################
+Vault Configuration
+oc exec -ti vault-server-0 -- vault operator init
+oc exec -ti vault-server-0 -- vault operator unseal
+
+Finally, join the remaining pods to the Raft cluster and unseal them. 
+The pods will need to communicate directly, 
+so we'll configure the pods to use the internal service provided by the Helm chart:
+
+oc exec -ti vault-server-1 -- vault operator raft join http://vault-server-0.vault-server-internal:8200
+oc exec -ti vault-server-1 -- vault operator unseal
+
+oc exec -ti vault-server-2 -- vault operator raft join http://vault-server-0.vault-server-internal:8200
+oc exec -ti vault-server-2 -- vault operator unseal
+
+
+To verify if the Raft cluster has successfully been initialized, run the following.
+
+First, log in using the root token on the vault-server-0 pod:
+
+oc exec -ti vault-server-0 -- vault login
+
+oc exec -ti vault-server-0 -- vault operator raft list-peers
+
+
