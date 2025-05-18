@@ -71,6 +71,10 @@ spec:
 Vault Configuration
 oc exec -ti vault-server-0 -- vault operator init
 oc exec -ti vault-server-0 -- vault operator unseal
+oc exec -ti vault-server-0 -- vault operator unseal <unseal-key-1>
+oc exec -ti vault-server-0 -- vault operator unseal <unseal-key-2>
+oc exec -ti vault-server-0 -- vault operator unseal <unseal-key-3>
+
 
 Finally, join the remaining pods to the Raft cluster and unseal them. 
 The pods will need to communicate directly, 
